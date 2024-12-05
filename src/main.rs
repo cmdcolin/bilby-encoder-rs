@@ -1,25 +1,36 @@
 use clap::Parser;
-use rust_htslib::bam::{IndexedReader, Read};
+use rust_htslib::bam::{Header, HeaderView, IndexedReader, Read, Reader};
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 struct Args {
     #[arg(short, long)]
-    bam: String,
+    bam: Option<String>,
 
     #[arg(short, long)]
-    start: u32,
+    start: Option<u32>,
 
     #[arg(short, long)]
-    end: u32,
+    end: Option<u32>,
 
     #[arg(short, long)]
-    chrom: String,
+    chrom: Option<String>,
 }
 
 fn main() -> Result<(), &'static str> {
     let args = Args::parse();
-    let result = verify(&args.bam, &args.chrom, args.start, args.end);
+    let mut result: Vec<PileupPosition> = vec![];
+    if let Some(s) = args.start {
+        if let Some(e) = args.end {
+            if let Some(b) = args.bam {
+                if let Some(c) = args.chrom {
+                    result = pileup_region(&b, &c, s, e);
+                }
+            }
+        }
+    } else {
+        result = pileup();
+    }
     for entry in result {
         println!(
             "{}\t{}\t{}\t{}\t{}",
@@ -29,6 +40,7 @@ fn main() -> Result<(), &'static str> {
     Ok(())
 }
 struct BasePileupPosition {
+    tid: u32,
     pos: u32,
     depth: u32,
     nskips: u32,
@@ -42,7 +54,47 @@ struct PileupPosition {
     delta_skip: i64,
 }
 
-fn verify(bam: &str, chrom: &str, start: u32, end: u32) -> Vec<PileupPosition> {
+fn pileup() -> Vec<PileupPosition> {
+    let mut bam = Reader::from_stdin().unwrap();
+    let header = Header::from_template(&bam.header());
+    let head_view = HeaderView::from_header(&header);
+    let rres: Vec<BasePileupPosition> = bam
+        .pileup()
+        .flat_map(|p| {
+            let pileup = p.unwrap();
+            let mut nskips: u32 = 0;
+            for a in pileup.alignments() {
+                if a.is_refskip() {
+                    nskips += 1;
+                }
+            }
+            Some(BasePileupPosition {
+                tid: pileup.tid(),
+                pos: pileup.pos(),
+                depth: pileup.depth(),
+                nskips,
+            })
+        })
+        .collect();
+
+    let result = rres
+        .iter()
+        .zip(rres.iter().skip(1))
+        .map(|(a, b)| PileupPosition {
+            chrom: std::str::from_utf8(head_view.tid2name(a.tid))
+                .unwrap()
+                .to_string(),
+            pos: a.pos,
+            delta_skip: i64::from(a.nskips) - i64::from(b.nskips),
+            coverage: a.depth - a.nskips,
+            nskips: a.nskips,
+        })
+        .collect::<Vec<_>>();
+
+    result
+}
+
+fn pileup_region(bam: &str, chrom: &str, start: u32, end: u32) -> Vec<PileupPosition> {
     let mut bam = IndexedReader::from_path(bam).unwrap();
     let _ = bam.fetch((chrom, start, end));
     let rres: Vec<BasePileupPosition> = bam
@@ -57,6 +109,7 @@ fn verify(bam: &str, chrom: &str, start: u32, end: u32) -> Vec<PileupPosition> {
                     }
                 }
                 Some(BasePileupPosition {
+                    tid: pileup.tid(),
                     pos: pileup.pos(),
                     depth: pileup.depth(),
                     nskips,
@@ -88,7 +141,7 @@ mod tests {
 
     #[test]
     fn simple_bam() {
-        // let (lineno, err) = verify("test/volvox.fa", "test/volvox.filtered.vcf");
+        // let (lineno, err) = pileup_region("test/volvox.fa", "test/volvox.filtered.vcf");
         // assert_eq!(lineno, 73);
         // assert_eq!(err, 0);
     }
