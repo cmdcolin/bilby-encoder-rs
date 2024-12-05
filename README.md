@@ -84,7 +84,7 @@ $ time bilby-encoder-rs --bed subset.bed --bam ENCFF712DCV.bam
 
 ## Parallelize by region with ENCODE RNA-seq
 time parallel --colsep '\t' bilby-encoder-rs --bam ENCFF712DCV.bam --chrom {1} --start {2} --end {3}  :::: subset.bed
-7s
+6.5s
 ```
 
 Note: It's not an apples to apples comparison since we use pilup instead of CIGAR tracking, and don't write direct numpy arrays, and a couple other things, but it could be a possible avenue for speedup

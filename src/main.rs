@@ -1,3 +1,4 @@
+#![feature(iter_map_windows)]
 use std::fs::File;
 use std::io::{prelude::*, BufReader};
 
@@ -25,16 +26,9 @@ struct Args {
 
 fn main() -> Result<(), &'static str> {
     let args = Args::parse();
-    let result;
     if let Some(bam) = args.bam {
         if let (Some(s), Some(e), Some(c)) = (args.start, args.end, args.chrom) {
-            result = pileup_region(&bam, &c, s, e);
-            for entry in result {
-                println!(
-                    "{}\t{}\t{}\t{}\t{}",
-                    entry.chrom, entry.pos, entry.coverage, entry.nskips, entry.delta_skip
-                )
-            }
+            pileup_region(&bam, &c, s, e);
         } else if let Some(bed) = args.bed {
             let file = File::open(bed).unwrap();
             let reader = BufReader::new(file);
@@ -45,28 +39,16 @@ fn main() -> Result<(), &'static str> {
                 let c = ll[0];
                 let s = ll[1];
                 let e = ll[2];
-                let result = pileup_region(
+                pileup_region(
                     &bam,
                     &c,
                     s.parse::<u32>().unwrap(),
                     e.parse::<u32>().unwrap(),
                 );
-                for entry in result {
-                    println!(
-                        "{}\t{}\t{}\t{}\t{}",
-                        entry.chrom, entry.pos, entry.coverage, entry.nskips, entry.delta_skip
-                    )
-                }
             }
         }
     } else {
-        result = pileup();
-        for entry in result {
-            println!(
-                "{}\t{}\t{}\t{}\t{}",
-                entry.chrom, entry.pos, entry.coverage, entry.nskips, entry.delta_skip
-            )
-        }
+        pileup();
     }
 
     Ok(())
@@ -86,11 +68,11 @@ struct PileupPosition {
     delta_skip: i64,
 }
 
-fn pileup() -> Vec<PileupPosition> {
+fn pileup() {
     let mut bam = Reader::from_stdin().unwrap();
     let header = Header::from_template(&bam.header());
     let head_view = HeaderView::from_header(&header);
-    let rres: Vec<BasePileupPosition> = bam
+    let _ = bam
         .pileup()
         .flat_map(|p| {
             let pileup = p.unwrap();
@@ -107,29 +89,29 @@ fn pileup() -> Vec<PileupPosition> {
                 nskips,
             })
         })
-        .collect();
-
-    let result = rres
-        .iter()
-        .zip(rres.iter().skip(1))
-        .map(|(a, b)| PileupPosition {
-            chrom: std::str::from_utf8(head_view.tid2name(a.tid))
+        .map_windows(|[x, y]| PileupPosition {
+            chrom: std::str::from_utf8(head_view.tid2name(x.tid))
                 .unwrap()
                 .to_string(),
-            pos: a.pos,
-            delta_skip: i64::from(a.nskips) - i64::from(b.nskips),
-            coverage: a.depth - a.nskips,
-            nskips: a.nskips,
+            pos: x.pos,
+            delta_skip: i64::from(x.nskips) - i64::from(y.nskips),
+            coverage: x.depth - x.nskips,
+            nskips: x.nskips,
         })
-        .collect::<Vec<_>>();
-
-    result
+        .for_each(|r| {
+            println!(
+                "{}\t{}\t{}\t{}\t{}",
+                r.chrom, r.pos, r.coverage, r.nskips, r.delta_skip
+            );
+        });
 }
 
-fn pileup_region(bam: &str, chrom: &str, start: u32, end: u32) -> Vec<PileupPosition> {
+fn pileup_region(bam: &str, chrom: &str, start: u32, end: u32) {
     let mut bam = IndexedReader::from_path(bam).unwrap();
     let _ = bam.fetch((chrom, start, end));
-    let rres: Vec<BasePileupPosition> = bam
+    let header = Header::from_template(&bam.header());
+    let head_view = HeaderView::from_header(&header);
+    let _ = bam
         .pileup()
         .flat_map(|p| {
             let pileup = p.unwrap();
@@ -150,21 +132,21 @@ fn pileup_region(bam: &str, chrom: &str, start: u32, end: u32) -> Vec<PileupPosi
                 None
             }
         })
-        .collect();
-
-    let result = rres
-        .iter()
-        .zip(rres.iter().skip(1))
-        .map(|(a, b)| PileupPosition {
-            chrom: chrom.to_string(),
-            pos: a.pos,
-            delta_skip: i64::from(a.nskips) - i64::from(b.nskips),
-            coverage: a.depth - a.nskips,
-            nskips: a.nskips,
+        .map_windows(|[x, y]| PileupPosition {
+            chrom: std::str::from_utf8(head_view.tid2name(x.tid))
+                .unwrap()
+                .to_string(),
+            pos: x.pos,
+            delta_skip: i64::from(x.nskips) - i64::from(y.nskips),
+            coverage: x.depth - x.nskips,
+            nskips: x.nskips,
         })
-        .collect::<Vec<_>>();
-
-    result
+        .for_each(|r| {
+            println!(
+                "{}\t{}\t{}\t{}\t{}",
+                r.chrom, r.pos, r.coverage, r.nskips, r.delta_skip
+            );
+        });
 }
 
 #[cfg(test)]
