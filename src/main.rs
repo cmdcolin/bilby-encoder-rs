@@ -1,3 +1,6 @@
+use std::fs::File;
+use std::io::{prelude::*, BufReader};
+
 use clap::Parser;
 use rust_htslib::bam::{Header, HeaderView, IndexedReader, Read, Reader};
 
@@ -15,22 +18,57 @@ struct Args {
 
     #[arg(short, long)]
     chrom: Option<String>,
+
+    #[arg(long)]
+    bed: Option<String>,
 }
 
 fn main() -> Result<(), &'static str> {
     let args = Args::parse();
     let result;
-    if let (Some(s), Some(e), Some(c), Some(b)) = (args.start, args.end, args.chrom, args.bam) {
-        result = pileup_region(&b, &c, s, e);
+    if let Some(bam) = args.bam {
+        if let (Some(s), Some(e), Some(c)) = (args.start, args.end, args.chrom) {
+            result = pileup_region(&bam, &c, s, e);
+            for entry in result {
+                println!(
+                    "{}\t{}\t{}\t{}\t{}",
+                    entry.chrom, entry.pos, entry.coverage, entry.nskips, entry.delta_skip
+                )
+            }
+        } else if let Some(bed) = args.bed {
+            let file = File::open(bed).unwrap();
+            let reader = BufReader::new(file);
+
+            for line in reader.lines() {
+                let x = line.unwrap();
+                let ll = (x.as_str()).split("\t").collect::<Vec<&str>>();
+                let c = ll[0];
+                let s = ll[1];
+                let e = ll[2];
+                let result = pileup_region(
+                    &bam,
+                    &c,
+                    s.parse::<u32>().unwrap(),
+                    e.parse::<u32>().unwrap(),
+                );
+                for entry in result {
+                    println!(
+                        "{}\t{}\t{}\t{}\t{}",
+                        entry.chrom, entry.pos, entry.coverage, entry.nskips, entry.delta_skip
+                    )
+                }
+            }
+        }
     } else {
         result = pileup();
+        for entry in result {
+            println!(
+                "{}\t{}\t{}\t{}\t{}",
+                entry.chrom, entry.pos, entry.coverage, entry.nskips, entry.delta_skip
+            )
+        }
     }
-    for entry in result {
-        println!(
-            "{}\t{}\t{}\t{}\t{}",
-            entry.chrom, entry.pos, entry.coverage, entry.nskips, entry.delta_skip
-        )
-    }
+
     Ok(())
 }
 struct BasePileupPosition {
