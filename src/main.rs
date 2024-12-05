@@ -19,15 +19,9 @@ struct Args {
 
 fn main() -> Result<(), &'static str> {
     let args = Args::parse();
-    let mut result: Vec<PileupPosition> = vec![];
-    if let Some(s) = args.start {
-        if let Some(e) = args.end {
-            if let Some(b) = args.bam {
-                if let Some(c) = args.chrom {
-                    result = pileup_region(&b, &c, s, e);
-                }
-            }
-        }
+    let result;
+    if let (Some(s), Some(e), Some(c), Some(b)) = (args.start, args.end, args.chrom, args.bam) {
+        result = pileup_region(&b, &c, s, e);
     } else {
         result = pileup();
     }
