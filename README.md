@@ -18,7 +18,7 @@ cat rnaseq.bam | bilby-encoder-rs > out
 Reports output to stdout, looks like this currently, <-- annotations added for clarity
 
 ```
-refName	pos	n_match	n_skip	n_match	n_match_to_n_skip
+refName	pos	n_match	n_skip	skip_delta
 chr1	153357876	8001	0	0 <-- exon
 chr1	153357877	8002	0	0
 chr1	153357878	8003	0	0
