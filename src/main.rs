@@ -14,6 +14,9 @@ struct Args {
     #[arg(short, long)]
     start: Option<u32>,
 
+    #[arg(long, default_value_t = 10000000)]
+    max_depth: u32,
+
     #[arg(short, long)]
     end: Option<u32>,
 
@@ -28,7 +31,7 @@ fn main() -> Result<(), &'static str> {
     let args = Args::parse();
     if let Some(bam) = args.bam {
         if let (Some(s), Some(e), Some(c)) = (args.start, args.end, args.chrom) {
-            pileup_region(&bam, &c, s, e);
+            pileup_region(&bam, &c, s, e, args.max_depth);
         } else if let Some(bed) = args.bed {
             let file = File::open(bed).unwrap();
             let reader = BufReader::new(file);
@@ -44,11 +47,12 @@ fn main() -> Result<(), &'static str> {
                     &c,
                     s.parse::<u32>().unwrap(),
                     e.parse::<u32>().unwrap(),
+                    args.max_depth,
                 );
             }
         }
     } else {
-        pileup();
+        pileup(args.max_depth);
     }
 
     Ok(())
@@ -68,85 +72,85 @@ struct PileupPosition {
     delta_skip: i64,
 }
 
-fn pileup() {
+// can't figure out the right types here to pass the pileup
+// fn do_pileup(p: Pileups<'_, IndexedReader>, hview: HeaderView) {}
+
+fn pileup(max_depth: u32) {
     let mut bam = Reader::from_stdin().unwrap();
     let header = Header::from_template(&bam.header());
-    let head_view = HeaderView::from_header(&header);
-    let _ = bam
-        .pileup()
-        .flat_map(|p| {
-            let pileup = p.unwrap();
-            let mut nskips: u32 = 0;
-            for a in pileup.alignments() {
-                if a.is_refskip() {
-                    nskips += 1;
-                }
+    let hview = HeaderView::from_header(&header);
+    let mut p = bam.pileup();
+    p.set_max_depth(max_depth);
+    p.map(|p| {
+        let pileup = p.unwrap();
+        let mut nskips: u32 = 0;
+        for a in pileup.alignments() {
+            if a.is_refskip() {
+                nskips += 1;
             }
-            Some(BasePileupPosition {
-                tid: pileup.tid(),
-                pos: pileup.pos(),
-                depth: pileup.depth(),
-                nskips,
-            })
-        })
-        .map_windows(|[x, y]| PileupPosition {
-            chrom: std::str::from_utf8(head_view.tid2name(x.tid))
-                .unwrap()
-                .to_string(),
-            pos: x.pos,
-            delta_skip: i64::from(x.nskips) - i64::from(y.nskips),
-            coverage: x.depth - x.nskips,
-            nskips: x.nskips,
-        })
-        .for_each(|r| {
-            println!(
-                "{}\t{}\t{}\t{}\t{}",
-                r.chrom, r.pos, r.coverage, r.nskips, r.delta_skip
-            );
-        });
+        }
+        BasePileupPosition {
+            tid: pileup.tid(),
+            pos: pileup.pos(),
+            depth: pileup.depth(),
+            nskips,
+        }
+    })
+    .map_windows(|[x, y]| PileupPosition {
+        chrom: std::str::from_utf8(hview.tid2name(x.tid))
+            .unwrap()
+            .to_string(),
+        pos: x.pos,
+        delta_skip: i64::from(x.nskips) - i64::from(y.nskips),
+        coverage: x.depth - x.nskips,
+        nskips: x.nskips,
+    })
+    .for_each(|r| {
+        println!(
+            "{}\t{}\t{}\t{}\t{}",
+            r.chrom, r.pos, r.coverage, r.nskips, r.delta_skip
+        );
+    });
 }
 
-fn pileup_region(bam: &str, chrom: &str, start: u32, end: u32) {
+fn pileup_region(bam: &str, chrom: &str, start: u32, end: u32, max_depth: u32) {
     let mut bam = IndexedReader::from_path(bam).unwrap();
     let _ = bam.fetch((chrom, start, end));
     let header = Header::from_template(&bam.header());
-    let head_view = HeaderView::from_header(&header);
-    let _ = bam
-        .pileup()
-        .flat_map(|p| {
-            let pileup = p.unwrap();
-            if pileup.pos() >= start && pileup.pos() < end {
-                let mut nskips: u32 = 0;
-                for a in pileup.alignments() {
-                    if a.is_refskip() {
-                        nskips += 1;
-                    }
-                }
-                Some(BasePileupPosition {
-                    tid: pileup.tid(),
-                    pos: pileup.pos(),
-                    depth: pileup.depth(),
-                    nskips,
-                })
-            } else {
-                None
+    let hview = HeaderView::from_header(&header);
+    let mut p = bam.pileup();
+    p.set_max_depth(max_depth);
+
+    p.map(|p| {
+        let pileup = p.unwrap();
+        let mut nskips: u32 = 0;
+        for a in pileup.alignments() {
+            if a.is_refskip() {
+                nskips += 1;
             }
-        })
-        .map_windows(|[x, y]| PileupPosition {
-            chrom: std::str::from_utf8(head_view.tid2name(x.tid))
-                .unwrap()
-                .to_string(),
-            pos: x.pos,
-            delta_skip: i64::from(x.nskips) - i64::from(y.nskips),
-            coverage: x.depth - x.nskips,
-            nskips: x.nskips,
-        })
-        .for_each(|r| {
-            println!(
-                "{}\t{}\t{}\t{}\t{}",
-                r.chrom, r.pos, r.coverage, r.nskips, r.delta_skip
-            );
-        });
+        }
+        BasePileupPosition {
+            tid: pileup.tid(),
+            pos: pileup.pos(),
+            depth: pileup.depth(),
+            nskips,
+        }
+    })
+    .map_windows(|[x, y]| PileupPosition {
+        chrom: std::str::from_utf8(hview.tid2name(x.tid))
+            .unwrap()
+            .to_string(),
+        pos: x.pos,
+        delta_skip: i64::from(x.nskips) - i64::from(y.nskips),
+        coverage: x.depth - x.nskips,
+        nskips: x.nskips,
+    })
+    .for_each(|r| {
+        println!(
+            "{}\t{}\t{}\t{}\t{}",
+            r.chrom, r.pos, r.coverage, r.nskips, r.delta_skip
+        );
+    });
 }
 
 #[cfg(test)]

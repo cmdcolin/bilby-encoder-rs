@@ -69,23 +69,26 @@ chr1	153357889	2	8005	0
 
 - Interfacing python and rust could also be considered via pyO3 if it is desirable to have very fast data handoff, but it just writes results to disk here
 
+- I noticed the pileup function has a default max_depth of 8000. We could use this potentially, but for RNA-seq it can be quite deep (100,000). Note that limiting the depth does speed up the runtime though. It was 30s instead of 90s in the rust version
 
 ## Benchmark
 
 ```
-## Python version on 1000 regions, ENCODE RNA-seq
+## Python version, just writing the numpy matrices to disk
 $ time python src/encoder.py -b subset.bed -f hg19.mod.fa -a ENCFF712DCV.bam
-533s
+266s
 
-## Rust version on 1000 regions, ENCODE RNA-seq
+
+## Rust version, unlimited depth, ~3x faster
 $ time bilby-encoder-rs --bed subset.bed --bam ENCFF712DCV.bam
-34s
+92s
+
 
 
 ## Parallelize by region with ENCODE RNA-seq
 time parallel --colsep '\t' bilby-encoder-rs --bam ENCFF712DCV.bam --chrom {1} --start {2} --end {3}  :::: subset.bed
-6.5s
+13s
 ```
 
-Note: It's not an apples to apples comparison since we use pilup instead of CIGAR tracking, and don't write direct numpy arrays, and a couple other things, but it could be a possible avenue for speedup
+Note: It's not an apples to apples comparison since we use pilup instead of CIGAR tracking, and don't write direct numpy arrays, and a couple other things, but it could be a possible avenue for speedup. 
 
