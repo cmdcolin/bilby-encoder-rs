@@ -69,7 +69,7 @@ chr1	153357889	2	8005	0
 
 - Interfacing python and rust could also be considered via pyO3 if it is desirable to have very fast data handoff, but it just writes results to disk here
 
-- I noticed the pileup function has a default max_depth of 8000. We could use this potentially, but for RNA-seq it can be quite deep (100,000). Note that limiting the depth does speed up the runtime though. It was 30s instead of 90s in the rust version
+- I noticed the pileup function has a default max_depth of 8000. We could use this potentially, but for RNA-seq can be quite deep (e.g. 100,000x coverage) so limiting to 8,000 loses a lot of data potentially. Note that limiting the depth does speed up the runtime though. It was 30s instead of 90s in the rust version
 
 ## Benchmark
 
