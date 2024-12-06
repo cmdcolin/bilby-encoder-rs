@@ -54,7 +54,7 @@ chr1	153357889	2	8005	0
 
 ## Alternatives and other options
 
-- I considered using https://github.com/sstadick/perbase/ which is multithreaded but dos not accept BAM from stdin, and does not report strandedness, and is a bit advanced
+- I considered using https://github.com/sstadick/perbase/ which is multithreaded but does not accept BAM from stdin, and does not report strandedness, and is a bit advanced
 
 - I also considered parsing the text output of `samtools mpileup` directly
 
