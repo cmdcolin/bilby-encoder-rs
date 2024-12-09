@@ -60,16 +60,26 @@ fn main() -> Result<(), &'static str> {
 struct BasePileupPosition {
     tid: u32,
     pos: u32,
-    depth: u32,
-    nskips: u32,
+    n_skips: u32,
+    n_cov: u32,
+    n_cov_p: u32,
+    n_cov_n: u32,
+    n_skips_n: u32,
+    n_skips_p: u32,
 }
 
 struct PileupPosition {
     chrom: String,
     pos: u32,
-    coverage: u32,
-    nskips: u32,
+    n_skips: u32,
+    n_cov: u32,
+    n_cov_p: u32,
+    n_cov_n: u32,
+    n_skips_n: u32,
+    n_skips_p: u32,
     delta_skip: i64,
+    delta_skip_n: i64,
+    delta_skip_p: i64,
 }
 
 // can't figure out the right types here to pass the pileup
@@ -81,19 +91,42 @@ fn pileup(max_depth: u32) {
     let hview = HeaderView::from_header(&header);
     let mut p = bam.pileup();
     p.set_max_depth(max_depth);
+
     p.map(|p| {
         let pileup = p.unwrap();
-        let mut nskips: u32 = 0;
+        let mut n_skips_p: u32 = 0;
+        let mut n_skips_n: u32 = 0;
+        let mut n_skips: u32 = 0;
+        let mut n_cov_n: u32 = 0;
+        let mut n_cov_p: u32 = 0;
+        let mut n_cov: u32 = 0;
+
         for a in pileup.alignments() {
             if a.is_refskip() {
-                nskips += 1;
+                if a.record().is_reverse() {
+                    n_skips_n += 1;
+                } else {
+                    n_skips_p += 1;
+                }
+                n_skips += 1;
+            } else if !a.is_del() {
+                if a.record().is_reverse() {
+                    n_cov_n += 1;
+                } else {
+                    n_cov_p += 1;
+                }
+                n_cov += 1;
             }
         }
         BasePileupPosition {
             tid: pileup.tid(),
             pos: pileup.pos(),
-            depth: pileup.depth(),
-            nskips,
+            n_cov,
+            n_skips,
+            n_cov_p,
+            n_cov_n,
+            n_skips_n,
+            n_skips_p,
         }
     })
     .map_windows(|[x, y]| PileupPosition {
@@ -101,14 +134,30 @@ fn pileup(max_depth: u32) {
             .unwrap()
             .to_string(),
         pos: x.pos,
-        delta_skip: i64::from(x.nskips) - i64::from(y.nskips),
-        coverage: x.depth - x.nskips,
-        nskips: x.nskips,
+        delta_skip_n: i64::from(x.n_skips_n) - i64::from(y.n_skips_n),
+        delta_skip_p: i64::from(x.n_skips_p) - i64::from(y.n_skips_p),
+        delta_skip: i64::from(x.n_skips) - i64::from(y.n_skips),
+        n_cov: x.n_cov,
+        n_cov_n: x.n_cov_n,
+        n_cov_p: x.n_cov_p,
+        n_skips: x.n_skips,
+        n_skips_p: x.n_skips_p,
+        n_skips_n: x.n_skips_n,
     })
     .for_each(|r| {
         println!(
-            "{}\t{}\t{}\t{}\t{}",
-            r.chrom, r.pos, r.coverage, r.nskips, r.delta_skip
+            "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+            r.chrom,
+            r.pos,
+            r.delta_skip,
+            r.delta_skip_n,
+            r.delta_skip_p,
+            r.n_skips,
+            r.n_skips_n,
+            r.n_skips_p,
+            r.n_cov,
+            r.n_cov_p,
+            r.n_cov_n
         );
     });
 }
@@ -123,17 +172,39 @@ fn pileup_region(bam: &str, chrom: &str, start: u32, end: u32, max_depth: u32) {
 
     p.map(|p| {
         let pileup = p.unwrap();
-        let mut nskips: u32 = 0;
+        let mut n_skips_p: u32 = 0;
+        let mut n_skips_n: u32 = 0;
+        let mut n_skips: u32 = 0;
+        let mut n_cov_n: u32 = 0;
+        let mut n_cov_p: u32 = 0;
+        let mut n_cov: u32 = 0;
+
         for a in pileup.alignments() {
             if a.is_refskip() {
-                nskips += 1;
+                if a.record().is_reverse() {
+                    n_skips_n += 1;
+                } else {
+                    n_skips_p += 1;
+                }
+                n_skips += 1;
+            } else if !a.is_del() {
+                if a.record().is_reverse() {
+                    n_cov_n += 1;
+                } else {
+                    n_cov_p += 1;
+                }
+                n_cov += 1;
             }
         }
         BasePileupPosition {
             tid: pileup.tid(),
             pos: pileup.pos(),
-            depth: pileup.depth(),
-            nskips,
+            n_cov,
+            n_skips,
+            n_cov_p,
+            n_cov_n,
+            n_skips_n,
+            n_skips_p,
         }
     })
     .map_windows(|[x, y]| PileupPosition {
@@ -141,26 +212,30 @@ fn pileup_region(bam: &str, chrom: &str, start: u32, end: u32, max_depth: u32) {
             .unwrap()
             .to_string(),
         pos: x.pos,
-        delta_skip: i64::from(x.nskips) - i64::from(y.nskips),
-        coverage: x.depth - x.nskips,
-        nskips: x.nskips,
+        delta_skip_n: i64::from(x.n_skips_n) - i64::from(y.n_skips_n),
+        delta_skip_p: i64::from(x.n_skips_p) - i64::from(y.n_skips_p),
+        delta_skip: i64::from(x.n_skips) - i64::from(y.n_skips),
+        n_cov: x.n_cov,
+        n_cov_n: x.n_cov_n,
+        n_cov_p: x.n_cov_p,
+        n_skips: x.n_skips,
+        n_skips_p: x.n_skips_p,
+        n_skips_n: x.n_skips_n,
     })
     .for_each(|r| {
         println!(
-            "{}\t{}\t{}\t{}\t{}",
-            r.chrom, r.pos, r.coverage, r.nskips, r.delta_skip
+            "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+            r.chrom,
+            r.pos,
+            r.delta_skip,
+            r.delta_skip_n,
+            r.delta_skip_p,
+            r.n_skips,
+            r.n_skips_n,
+            r.n_skips_p,
+            r.n_cov,
+            r.n_cov_p,
+            r.n_cov_n
         );
     });
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn simple_bam() {
-        // let (lineno, err) = pileup_region("test/volvox.fa", "test/volvox.filtered.vcf");
-        // assert_eq!(lineno, 73);
-        // assert_eq!(err, 0);
-    }
 }
